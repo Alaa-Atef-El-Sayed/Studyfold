@@ -9,3 +9,4 @@
 
 https://github.com/user-attachments/assets/6dfdb718-318f-4029-a851-51c068c81ac8
 
+Note: Many features are still being developed, and some features will be refined later.
