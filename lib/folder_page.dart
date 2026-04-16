@@ -19,6 +19,7 @@ import 'package:studyfold/models/pdf.dart';
 import 'package:studyfold/models/quiz.dart';
 import 'package:studyfold/models/canvas.dart';
 import 'package:studyfold/move_mode_page.dart';
+import 'package:studyfold/services/bundle_service.dart';
 import 'package:studyfold/services/folder_service.dart';
 import 'package:studyfold/models/element_type.dart';
 import 'package:path/path.dart' as p;
@@ -60,6 +61,7 @@ class _FolderPageState extends State<FolderPage> {
   Offset _startOffset = Offset.zero;
   Offset _startGlobalOffset = Offset.zero;
   bool desktopView = false;
+  double desktopViewScale = 1;
   int grid = 200;
   double currentScale = 1.0;
   bool _isLoading = false;
@@ -76,11 +78,14 @@ class _FolderPageState extends State<FolderPage> {
   bool _isSelectionMode = false;
   bool _areAllSelected = false;
   bool _isMovingMode = false;
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   desktopView = _settingsService.desktopViewValue;
-  // }
+
+  @override
+  void initState() {
+    super.initState();
+    desktopViewScale = _settingsService.desktopViewScale;
+    _transformationController.value = Matrix4.identity()
+      ..scale(desktopViewScale);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +135,11 @@ class _FolderPageState extends State<FolderPage> {
                     )
                   : Center(child: Text(widget.folder.name)),
               actions: [
+                IconButton(
+                  onPressed: _importBundle,
+                  icon: const Icon(Icons.download),
+                ),
+
                 (_isSelectionMode || _isMovingMode || widget.isMovingMode)
                     ? Row(
                         children: [
@@ -188,8 +198,12 @@ class _FolderPageState extends State<FolderPage> {
                                       value: "edit",
                                       child: Text("Edit"),
                                     ),
+                                    PopupMenuItem(
+                                      value: "export",
+                                      child: Text("Export Bundle"),
+                                    ),
                                   ],
-                                  onSelected: (value) {
+                                  onSelected: (value) async {
                                     switch (value) {
                                       case "edit":
                                         final item = widget.folderService
@@ -280,7 +294,6 @@ class _FolderPageState extends State<FolderPage> {
                                           ),
                                         ).then((done) {
                                           if (done != null && done) {
-                                            debugPrint('testA');
                                             setState(() {
                                               _isSelectionMode = false;
                                               _selectedItemIds.clear();
@@ -288,6 +301,70 @@ class _FolderPageState extends State<FolderPage> {
                                             });
                                           }
                                         });
+                                        break;
+                                      case "export":
+                                        final Set<FileBase> contents = {};
+                                        final List<FileBase> selectedItems = [];
+                                        selectedItems.addAll(
+                                          _selectedItemIds.map(
+                                            (id) => widget.folderService
+                                                .getItemById(id)['file'],
+                                          ),
+                                        );
+
+                                        contents.addAll(
+                                          selectedItems.expand(
+                                            (item) => widget.folderService
+                                                .gatherFolderContents(item.id)
+                                                .toSet(),
+                                          ),
+                                        );
+
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) {
+                                            String exportName = 'unnamed';
+
+                                            return AlertDialog(
+                                              title: Text("Export Name"),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  TextField(
+                                                    decoration:
+                                                        const InputDecoration(
+                                                          border:
+                                                              OutlineInputBorder(),
+                                                          labelText: 'Name',
+                                                        ),
+                                                    onChanged: (value) =>
+                                                        exportName = value,
+                                                  ),
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () {
+                                                    Navigator.of(context).pop();
+                                                  },
+                                                  child: Text("Cancel"),
+                                                ),
+
+                                                TextButton(
+                                                  onPressed: () async {
+                                                    Navigator.of(context).pop();
+                                                    await BundleService.exportBundle(
+                                                      contents.toList(),
+                                                      exportName,
+                                                    );
+                                                  },
+                                                  child: Text("Done"),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        );
+
                                         break;
                                     }
                                   },
@@ -1128,7 +1205,7 @@ class _FolderPageState extends State<FolderPage> {
     );
   }
 
-  void _createCanvas() {
+  void _createCanvas() async {
     final Map<String, dynamic> freePositionResult = widget.folderService
         .getNextFreePosition(false, widget.folder.id, _currentPage);
     final Offset position = freePositionResult['position'];
@@ -1141,7 +1218,7 @@ class _FolderPageState extends State<FolderPage> {
       );
       return;
     }
-    String canvasId = widget.folderService.createCanvas(
+    String canvasId = await widget.folderService.createCanvas(
       name: "Untitled Drawing",
       folderId: widget.folder.id,
       positionX: position.dx,
@@ -1149,13 +1226,17 @@ class _FolderPageState extends State<FolderPage> {
       page: _currentPage,
       strokes: [],
     );
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            CanvasPage(canvasId: canvasId, folderService: widget.folderService),
-      ),
-    );
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CanvasPage(
+            canvasId: canvasId,
+            folderService: widget.folderService,
+          ),
+        ),
+      );
+    }
   }
 
   void navigateToPage(int pageNumber) {
@@ -1305,6 +1386,7 @@ class _FolderPageState extends State<FolderPage> {
                 onInteractionEnd: (details) {
                   final Matrix4 matrix = _transformationController.value;
                   currentScale = matrix.getMaxScaleOnAxis();
+                  _settingsService.setDesktopViewScale(currentScale);
                 },
                 constrained: false,
                 child: AnimatedSwitcher(
@@ -2045,7 +2127,7 @@ class _FolderPageState extends State<FolderPage> {
     // Clean up and limit preview length
     previewText = previewText.trim();
     if (previewText.length > 150) {
-      previewText = previewText.substring(0, 150) + '...';
+      previewText = '${previewText.substring(0, 150)}...';
     }
 
     return Padding(
@@ -2489,7 +2571,7 @@ class _FolderPageState extends State<FolderPage> {
       top: positionY,
       child: Opacity(
         opacity: 0.4,
-        child: Container(
+        child: SizedBox(
           width: 200,
           height: 200,
           // color: Colors.transparent,
@@ -2675,5 +2757,24 @@ class _FolderPageState extends State<FolderPage> {
       _selectedItemIds.clear();
       _isSelectionMode = false;
     });
+  }
+
+  _importBundle() async {
+    final FilePicker picker = FilePicker.platform;
+
+    final FilePickerResult? result = await picker.pickFiles(
+      type: FileType.custom,
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      await BundleService.importBundle(
+        result.files.first.path!,
+        widget.folder.id,
+      );
+      if (await File(result.files.first.path!).exists()) {
+        await File(result.files.first.path!).delete();
+      }
+    }
   }
 }

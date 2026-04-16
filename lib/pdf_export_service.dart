@@ -1,5 +1,4 @@
 // pdf_export_service.dart
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pdf_widgets;
 import 'package:printing/printing.dart';
 import 'dart:typed_data';

@@ -2,18 +2,21 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:studyfold/models/audio_file.dart';
+import 'package:studyfold/models/canvas_element.dart';
+import 'package:studyfold/models/file.dart';
 import 'package:studyfold/models/file_base.dart';
 import 'package:studyfold/models/folder.dart';
+import 'package:studyfold/models/movable_element.dart';
 import 'package:studyfold/models/movable_element_data.dart';
 import 'package:studyfold/models/note.dart';
 import 'package:studyfold/models/pdf.dart';
 import 'package:studyfold/models/quiz.dart';
 import 'package:studyfold/models/quiz_question.dart';
 import 'package:studyfold/models/canvas.dart';
-import 'package:studyfold/stroke.dart';
+import 'package:studyfold/models/hive_stroke.dart';
+import 'package:uuid/uuid.dart';
 
 class FolderService {
   final Box<Folder> folderBox;
@@ -23,6 +26,9 @@ class FolderService {
   final Box<Quiz> quizBox;
   final Box<QuizQuestion> quizQuestionBox;
   final Box<Canvas> canvasBox;
+  final Box<HiveStroke> strokesBox;
+  final Box<HiveFile> filesBox;
+  final Box<MovableElementData> movableElementsBox;
 
   FolderService(
     this.folderBox,
@@ -32,7 +38,40 @@ class FolderService {
     this.quizBox,
     this.quizQuestionBox,
     this.canvasBox,
+    this.strokesBox,
+    this.filesBox,
+    this.movableElementsBox,
   );
+
+  void createMovableElement({required MovableElement movableElement}) {
+    final movableElementData = movableElement.toData();
+    movableElementsBox.put(movableElementData.id, movableElementData);
+  }
+
+  void createFile({required String parentId, required String filePath}) async {
+    final file = HiveFile(
+      id: const Uuid().v4(),
+      parentId: parentId,
+      filepath: filePath,
+    );
+    await filesBox.put(file.id, file);
+  }
+
+  void deleteFile({required String parentId}) async {
+    final HiveFile fileToDelete = filesBox.values.firstWhere(
+      (file) => file.parentId == parentId,
+    );
+
+    await filesBox.delete(fileToDelete.id);
+
+    if (filesBox.values
+        .where((file) => file.filepath == fileToDelete.filepath)
+        .isEmpty) {
+      if (await File(fileToDelete.filepath).exists()) {
+        await File(fileToDelete.filepath).delete();
+      }
+    }
+  }
 
   void createFolder(
     String name, {
@@ -44,7 +83,7 @@ class FolderService {
     required int pages,
   }) {
     final folder = Folder(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       name: name,
       folderId: folderId,
       description: description,
@@ -65,7 +104,7 @@ class FolderService {
     required int page,
   }) {
     final pdf = Pdf(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       folderId: folderId,
       title: title,
       filePath: filePath,
@@ -73,6 +112,7 @@ class FolderService {
       positionY: positionY,
       page: page,
     );
+    createFile(parentId: pdf.id, filePath: filePath);
     pdfBox.put(pdf.id, pdf);
   }
 
@@ -85,7 +125,7 @@ class FolderService {
     required int page,
   }) {
     final audio = AudioFile(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       folderId: folderId,
       title: title,
       filePath: filePath,
@@ -93,19 +133,20 @@ class FolderService {
       positionY: positionY,
       page: page,
     );
+    createFile(parentId: audio.id, filePath: filePath);
     audioFileBox.put(audio.id, audio);
   }
 
-  String createCanvas({
+  Future<String> createCanvas({
     required String name,
     required String folderId,
     required double positionX,
     required double positionY,
     required int page,
-    required List<Stroke> strokes,
-  }) {
+    required List<HiveStroke> strokes,
+  }) async {
     final canvas = Canvas(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       folderId: folderId,
       name: name,
       positionX: positionX,
@@ -113,7 +154,7 @@ class FolderService {
       page: page,
       strokes: strokes,
     );
-    canvasBox.put(canvas.id, canvas);
+    await canvasBox.put(canvas.id, canvas);
     return canvas.id;
   }
 
@@ -131,7 +172,7 @@ class FolderService {
     String title = 'Untitled Note',
   }) {
     final note = Note(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       folderId: folderId,
       title: title,
       document: document,
@@ -152,7 +193,7 @@ class FolderService {
     required List<String> options,
   }) {
     final quiz = Quiz(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       folderId: folderId,
       options: options,
       page: page,
@@ -173,7 +214,7 @@ class FolderService {
     required String type,
   }) {
     final quizQuestion = QuizQuestion(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       title: title,
       parentQuizId: quizId,
       answers: answers,
@@ -259,6 +300,27 @@ class FolderService {
         .toList();
   }
 
+  List<FileBase> gatherFolderContents(String folderId) {
+    List<FileBase> contents = [];
+
+    final folder = folderBox.get(folderId);
+    if (folder == null) {
+      return [getItemById(folderId)['file']];
+    }
+    contents.add(folder);
+
+    final children = tempGetFilesInFolder(folderId);
+    contents.addAll(children);
+
+    for (var child in children) {
+      if (child is Folder) {
+        contents.addAll(gatherFolderContents(child.id));
+      }
+    }
+
+    return contents.toSet().toList();
+  }
+
   ValueListenable<List<Map<String, dynamic>>> getFilesInFolderListener(
     String folderId, {
     int? page,
@@ -284,6 +346,42 @@ class FolderService {
     canvasBox.listenable().addListener(listener);
 
     return fileListNotifier;
+  }
+
+  List<FileBase> tempGetFilesInFolder(String folderId) {
+    final List<FileBase> contents = [];
+
+    noteBox.values.where((note) => note.folderId == folderId).forEach((note) {
+      contents.add(note);
+    });
+
+    canvasBox.values.where((canvas) => canvas.folderId == folderId).forEach((
+      canvas,
+    ) {
+      contents.add(canvas);
+    });
+
+    folderBox.values.where((folder) => folder.folderId == folderId).forEach((
+      folder,
+    ) {
+      contents.add(folder);
+    });
+
+    pdfBox.values.where((pdf) => pdf.folderId == folderId).forEach((pdf) {
+      contents.add(pdf);
+    });
+
+    quizBox.values.where((quiz) => quiz.folderId == folderId).forEach((quiz) {
+      contents.add(quiz);
+    });
+
+    audioFileBox.values
+        .where((audioFile) => audioFile.folderId == folderId)
+        .forEach((audioFile) {
+          contents.add(audioFile);
+        });
+
+    return contents;
   }
 
   List<Map<String, dynamic>> getFilesInFolder(String folderId) {
@@ -375,14 +473,56 @@ class FolderService {
     canvasBox.put(canvas.id, canvas);
   }
 
-  void updateCanvasStrokes(String canvasId, List<Stroke> strokes) {
+  void updateCanvasElementChildren(
+    String canvasId,
+    CanvasElement updatedElement,
+  ) {
+    final Canvas canvas = canvasBox.get(canvasId)!;
+    final index = canvas.elements.indexWhere(
+      (element) =>
+          element.movableElement != null &&
+          element.movableElement!.id == updatedElement.movableElement!.id,
+    );
+    if (index != -1) {
+      canvas.elements[index] = updatedElement;
+    }
+    canvasBox.put(canvas.id, canvas);
+  }
+
+  void updateCanvasElements(String canvasId, List<CanvasElement> elements) {
+    final Canvas canvas = canvasBox.get(canvasId)!;
+    canvas.elements = elements;
+    canvasBox.put(canvas.id, canvas);
+  }
+
+  void updateCanvasStrokes(String canvasId, List<HiveStroke> strokes) {
     final Canvas canvas = canvasBox.get(canvasId)!;
     canvas.strokes = strokes;
     canvasBox.put(canvas.id, canvas);
   }
 
+  void updateCanvasImages(String canvasId, List<MovableElementData> images) {
+    final Canvas canvas = canvasBox.get(canvasId)!;
+    canvas.images = images;
+    canvasBox.put(canvas.id, canvas);
+  }
+
+  void updateCanvasDocuments(
+    String canvasId,
+    List<MovableElementData> documents,
+  ) {
+    final Canvas canvas = canvasBox.get(canvasId)!;
+    canvas.documents = documents;
+    canvasBox.put(canvas.id, canvas);
+  }
+
+  List<CanvasElement> getCanvasElements(String canvasId) {
+    final Canvas canvas = canvasBox.get(canvasId)!;
+    return canvas.elements.toList();
+  }
+
   //temp TODO
-  List<Stroke> getCanvasStrokes(String canvasId) {
+  List<HiveStroke> getCanvasStrokes(String canvasId) {
     final Canvas canvas = canvasBox.get(canvasId)!;
     return canvas.strokes;
   }
@@ -427,11 +567,8 @@ class FolderService {
   }
 
   void deletePdf(String pdfId) async {
-    final pdf = pdfBox.get(pdfId);
-    final filePath = pdf!.filePath;
-    if (await File(filePath).exists()) {
-      await File(filePath).delete();
-    }
+    deleteFile(parentId: pdfId);
+
     pdfBox.delete(pdfId);
   }
 
@@ -622,10 +759,7 @@ class FolderService {
           noteBox.delete(note.id);
         }
         for (final pdf in folderPdfs) {
-          if (await File(pdf.filePath).exists()) {
-            await File(pdf.filePath).delete();
-          }
-          pdfBox.delete(pdf.id);
+          deletePdf(pdf.id);
         }
         for (final audio in folderAudioFiles) {
           if (await File(audio.filePath).exists()) {
@@ -636,12 +770,7 @@ class FolderService {
         folderBox.delete(itemId);
         break;
       case 'pdf':
-        final pdf = file as Pdf;
-        final filePath = pdf.filePath;
-        if (await File(filePath).exists()) {
-          await File(filePath).delete();
-        }
-        pdfBox.delete(itemId);
+        deletePdf(file.id);
         break;
       case 'quiz':
         // final quiz = file as Quiz;

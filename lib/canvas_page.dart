@@ -1,90 +1,90 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math' as Math;
+import 'dart:typed_data';
+import 'dart:ui';
+import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:flutter_portal/flutter_portal.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:studyfold/Icons/my_custom_icons.dart';
+import 'package:studyfold/Utils/drawing_controller.dart';
 import 'package:studyfold/canvas_action.dart';
-import 'package:studyfold/models/canvas.dart' as CustomCanvas;
+import 'package:studyfold/edit_image_page.dart';
+import 'package:studyfold/overlays/border_settings_popup.dart';
+import 'package:studyfold/overlays/link_menu_popup.dart';
+import 'package:studyfold/models/canvas_element.dart';
+import 'package:studyfold/models/element_type.dart';
+import 'package:studyfold/models/hive_shape.dart';
+import 'package:studyfold/models/hive_stroke.dart';
+import 'package:studyfold/models/movable_element.dart';
+import 'package:studyfold/models/movable_element_data.dart';
+import 'package:studyfold/models/shape_type.dart';
+import 'package:studyfold/models/stroke_type.dart';
+import 'package:studyfold/models/canvas.dart' as hive_canvas;
+import 'package:studyfold/overlays/pen_settings_button.dart';
+import 'package:studyfold/models/shape_config.dart';
 import 'package:studyfold/services/folder_service.dart';
+import 'package:studyfold/overlays/shape_menu_popup.dart';
 import 'package:studyfold/stroke.dart';
-
-import 'dart:ui' as ui;
+import 'package:studyfold/widgets/color_circle.dart';
+import 'package:studyfold/widgets/drawing_board_widget.dart';
 
 class CanvasPage extends StatefulWidget {
   final String canvasId;
   final FolderService folderService;
-  const CanvasPage({super.key, required this.canvasId, required this.folderService});
+  const CanvasPage({
+    super.key,
+    required this.canvasId,
+    required this.folderService,
+  });
 
   @override
   State<CanvasPage> createState() => _CanvasPageState();
 }
 
-class _CanvasPageState extends State<CanvasPage> with WidgetsBindingObserver {
+class _CanvasPageState extends State<CanvasPage>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   Timer? _autoSaveTimer;
-  final List<CanvasAction> _actions = [];
-  final List<CanvasAction> _undoActions = [];
-  final List<StrokeRecord> _erasedBatch = [];
-  List<Stroke> _strokes = [];
-  Path? _currentPath;
-  Paint _currentPaint = _defaultPaint();
-  double toolbarX = 0;
-  double toolbarY = 300;
-  double toolbarStartX = 0;
-  double toolbarStartY = 0;
-  bool toolbarActive = true;
-
-  static Paint _defaultPaint() => Paint()
-    ..color = Colors.lightBlue
-    ..strokeCap = StrokeCap.round
-    ..strokeWidth = 15.0
-    ..strokeJoin = StrokeJoin.round
-    ..style = PaintingStyle.stroke
-    ..isAntiAlias = true;
-
-  Offset? _previousPoint;
-  bool _isEraserMode = false;
-  bool _isPanMode = false;
-
-  Color _selectedColor = Colors.red;
-  double _selectedSize = 15.0;
-
-  Offset? eraserPoint;
-
-  TransformationController transformationController =
-      TransformationController();
-
-  void _updateCurrentPaint() {
-    if (_isEraserMode) {
-      // _currentPaint = Paint()
-      //   // ..blendMode = BlendMode.dstOut
-      //   ..strokeCap = StrokeCap.round
-      //   ..color = Colors.white
-      //   ..strokeJoin = StrokeJoin.round
-      //   ..strokeWidth = _selectedSize * 2
-      //   ..style = PaintingStyle.stroke
-      //   ..isAntiAlias = true;
-    } else {
-      _currentPaint = _defaultPaint()
-        ..color = _selectedColor
-        ..strokeWidth = _selectedSize;
-    }
-  }
+  late DrawingController _drawingController;
 
   @override
   void initState() {
     super.initState();
+
+    final AnimationController initialDockController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
     WidgetsBinding.instance.addObserver(this);
-    // _strokes = widget.folderService.getCanvasStrokes(widget.canvasId);
-    // _initializeBackgroundCanvas();
-    // transformationController.addListener(() {
-    //   setState(() {});
-    // });
+    // hive_canvas.Canvas canvas =
+    //     widget.folderService.getItemById(widget.canvasId)['file']
+    //         as hive_canvas.Canvas;
+
+    final List<CanvasElement> initialElements = widget.folderService
+        .getCanvasElements(widget.canvasId);
+
+    _drawingController = DrawingController()
+      ..elements = initialElements
+      ..dockController = initialDockController;
+    _drawingController.init();
   }
+  // _initializeBackgroundCanvas();
+  // transformationController.addListener(() {
+  //   setState(() {});
+  // });
 
   @override
   void dispose() {
-    transformationController.dispose();
     _saveCanvas();
     _autoSaveTimer?.cancel();
+    _drawingController.dockController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -92,6 +92,7 @@ class _CanvasPageState extends State<CanvasPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
         state == AppLifecycleState.inactive) {
       _saveCanvas();
     }
@@ -99,7 +100,27 @@ class _CanvasPageState extends State<CanvasPage> with WidgetsBindingObserver {
 
   Future<void> _saveCanvas() async {
     // todo
-    // widget.folderService.updateCanvasStrokes(widget.canvasId, _strokes);
+    for (var image in _drawingController.images) {
+      final CanvasElement element = _drawingController.elements.firstWhere(
+        (e) => e.movableElement != null && e.movableElement!.id == image.id,
+      );
+
+      final index = _drawingController.elements.indexWhere(
+        (e) => e.movableElement != null && e.movableElement!.id == image.id,
+      );
+
+      if (index != -1) {
+        _drawingController.elements[index] = CanvasElement(
+          movableElement: image.toData(),
+          children: element.children,
+        );
+      }
+    }
+
+    widget.folderService.updateCanvasElements(
+      widget.canvasId,
+      _drawingController.elements,
+    );
   }
 
   void _triggerAutoSave() {
@@ -117,499 +138,323 @@ class _CanvasPageState extends State<CanvasPage> with WidgetsBindingObserver {
         title: Text('Canvas'),
         actions: [
           Opacity(
-            opacity: (_isPanMode) ? 0.5 : 1,
+            opacity: (_drawingController.isPanMode) ? 0.5 : 1,
             child: IconButton(
               onPressed: () {
                 setState(() {
-                  _isPanMode = !_isPanMode;
+                  _drawingController.isPanMode = !_drawingController.isPanMode;
                 });
               },
               icon: const Icon(Icons.pan_tool),
             ),
           ),
-          IconButton(
-            onPressed: () {
-              setState(() {
-                _isEraserMode = !_isEraserMode;
-              });
-            },
-            icon: Icon(_isEraserMode ? Icons.delete : Icons.brush),
+        ],
+      ),
+      body: DrawingBoardWidget(
+        drawingController: _drawingController,
+        canvasSize: Size(3000, 3000),
+        onAddImageRequested: _addImage,
+        onAddDocumentRequested: _addDocument,
+        onEditImageRequested: _editImage,
+      ),
+    );
+  }
+
+  void _editImage({required CanvasElement element}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditImagePage(
+          parentId: widget.canvasId,
+          element: element,
+          folderService: widget.folderService,
+        ),
+      ),
+    );
+  }
+
+  void _addImage(Rect viewport) async {
+    final ImagePicker picker = ImagePicker();
+
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image == null) return;
+
+    final String id = DateTime.now().millisecondsSinceEpoch.toString();
+    final directory = await getApplicationDocumentsDirectory();
+    final String destinationPath = p.join(directory.path, id);
+    final sourceFilePath = image.path;
+    final File finalFile = await File(sourceFilePath).copy(destinationPath);
+    final permanentFilePath = finalFile.path;
+
+    if (await File(sourceFilePath).exists()) {
+      await File(sourceFilePath).delete();
+    }
+
+    final Uint8List bytes = await finalFile.readAsBytes();
+    final ui.Image decodedImage = await decodeImageFromList(bytes);
+    double height = decodedImage.height.toDouble();
+    double width = decodedImage.width.toDouble();
+    final double aspectRatio = width / height;
+    width = 200;
+    height = width / aspectRatio;
+
+    MovableElement movableElement = MovableElement(
+      width: width,
+      height: height,
+      id: id,
+      aspectRatio: aspectRatio,
+      type: ElementType.image,
+      position: viewport.center,
+      filePath: permanentFilePath,
+      widget: _buildImageWidget(permanentFilePath, id, width, height),
+    );
+
+    widget.folderService.createFile(parentId: id, filePath: permanentFilePath);
+    widget.folderService.createMovableElement(movableElement: movableElement);
+
+    setState(() {
+      _drawingController.images.add(movableElement);
+      _drawingController.elements.add(
+        CanvasElement(movableElement: movableElement.toData()),
+      );
+    });
+  }
+
+  void _addDocument(Rect viewport) async {
+    final FilePicker picker = FilePicker.platform;
+
+    final FilePickerResult? result = await picker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      final file = result.files.first;
+      final String id = '${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final directory = await getApplicationDocumentsDirectory();
+      final String destinationPath = p.join(directory.path, id);
+      final sourceFilePath = file.path!;
+      final File finalFile = await File(sourceFilePath).copy(destinationPath);
+      final permanentFilePath = finalFile.path;
+
+      if (await File(sourceFilePath).exists()) {
+        await File(sourceFilePath).delete();
+      }
+
+      final movableElement = MovableElement(
+        width: 200,
+        height: 120,
+        id: id,
+        type: ElementType.document,
+        position: viewport.center,
+        filePath: permanentFilePath,
+        aspectRatio: 200 / 120,
+        title: file.name,
+        widget: _buildDocumentWidget(
+          permanentFilePath,
+          file.name,
+          id,
+          200,
+          120,
+        ),
+      );
+
+      widget.folderService.createFile(
+        parentId: id,
+        filePath: permanentFilePath,
+      );
+
+      widget.folderService.createMovableElement(movableElement: movableElement);
+
+      setState(() {
+        _drawingController.documents.add(movableElement);
+      });
+    }
+  }
+
+  Widget _buildImageWidget(
+    String imagePath,
+    String id,
+    double width,
+    double height,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      height: double.infinity,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: Image.file(File(imagePath), fit: BoxFit.fill),
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              Container(
-                color: Colors.white,
-                child: InteractiveViewer(
-                  transformationController: transformationController,
-                  panEnabled: _isPanMode,
-                  scaleEnabled: _isPanMode,
-                  minScale: 0.1,
-                  maxScale: 5.0,
-                  boundaryMargin: EdgeInsets.all(2000),
-                  child: SizedBox(
-                    width: 5000,
-                    height: 5000,
-                    child: RepaintBoundary(
-                      child: AnimatedBuilder(
-                        animation: transformationController,
-                        builder: (context, child) {
-                          final viewport = _calculateViewport(
-                            constraints.biggest,
-                          );
-                          return CustomPaint(
-                            painter: DrawingPainter(
-                              _strokes,
-                              viewport,
-                              eraserPoint,
-                              _isEraserMode,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  // child: GestureDetector(
-                  //   onPanStart: (details) {
-                  //     if (_isPanMode) return;
-                  //     _startDrawing(details.localPosition);
-                  //   },
-                  //   onPanUpdate: (details) {
-                  //     if (_isPanMode) return;
-                  //     final currentPoint = details.localPosition;
-
-                  //     _previousPoint ??= currentPoint;
-
-                  //     final midPoint = (_previousPoint! + currentPoint) / 2;
-
-                  //     _currentPath!.quadraticBezierTo(
-                  //       _previousPoint!.dx,
-                  //       _previousPoint!.dy,
-                  //       midPoint.dx,
-                  //       midPoint.dy,
-                  //     );
-                  //     _previousPoint = currentPoint;
-
-                  //     setState(() {
-                  //       _strokes = List.from(_strokes);
-                  //     });
-                  //   },
-                  //   onPanEnd: (details) {
-                  //     if (_isPanMode) return;
-                  //     if (_previousPoint != null) {
-                  //       setState(() {
-                  //         _currentPath!.lineTo(
-                  //           _previousPoint!.dx,
-                  //           _previousPoint!.dy,
-                  //         );
-                  //       });
-                  //     }
-                  //     _currentPath = null;
-                  //     _previousPoint = null;
-                  //   },
-
-                  //   child: RepaintBoundary(
-                  //     child: CustomPaint(painter: DrawingPainter(_strokes)),
-                  //   ),
-                  // ),
-                ),
-              ),
-
-              if (!_isPanMode)
-                GestureDetector(
-                  onPanStart: (details) {
-                    _startDrawing(details.localPosition);
-                  },
-                  onPanUpdate: (details) {
-                    // final currentPoint = details.localPosition;
-                    final currentPoint = _screenToCanvas(details.localPosition);
-                    eraserPoint = currentPoint;
-                    if (_isEraserMode) {
-                      setState(() {
-                        _eraseAt(currentPoint);
-                      });
-                    } else {
-                      _previousPoint ??= currentPoint;
-
-                      final midPoint = (_previousPoint! + currentPoint) / 2;
-
-                      _currentPath!.quadraticBezierTo(
-                        _previousPoint!.dx,
-                        _previousPoint!.dy,
-                        midPoint.dx,
-                        midPoint.dy,
-                      );
-                      _previousPoint = currentPoint;
-
-                      setState(() {
-                        _strokes.last = Stroke(
-                          color: _selectedColor,
-                          size: _selectedSize,
-                          paint: _currentPaint,
-                          path: _currentPath!,
-                        );
-                      });
-                    }
-                  },
-                  onPanEnd: (details) {
-                    _finishErasing();
-                    setState(() {
-                      eraserPoint = null;
-                    });
-                    if (_previousPoint != null) {
-                      setState(() {
-                        _currentPath!.lineTo(
-                          _previousPoint!.dx,
-                          _previousPoint!.dy,
-                        );
-                        final newStroke = _strokes.last;
-
-                        _actions.add(
-                          CanvasAction(
-                            type: ActionType.draw,
-                            strokes: [
-                              StrokeRecord(newStroke, _strokes.length - 1),
-                            ],
-                          ),
-                        );
-
-                        _undoActions.clear();
-                      });
-                    }
-                    _currentPath = null;
-                    _previousPoint = null;
-                  },
-
-                  child: Container(color: Colors.transparent),
-                ),
-
-              _buildToolBar(),
-            ],
-          );
-        },
-      ),
     );
   }
 
-  Widget _buildToolBar() {
-    return Positioned(
-      top: toolbarY,
-      left: toolbarX,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: Colors.grey,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  toolbarX += details.delta.dx;
-                  toolbarY += details.delta.dy;
-                });
-              },
-              child: Container(width: 50, height: 50, color: Colors.amber),
-            ),
-
-            IconButton(
-              icon: const Icon(Icons.undo),
-              onPressed: _actions.isNotEmpty
-                  ? () {
-                      setState(() {
-                        final lastAction = _actions.removeLast();
-                        _undoActions.add(lastAction);
-
-                        if (lastAction.type == ActionType.draw) {
-                          for (var record in lastAction.strokes) {
-                            _strokes.remove(record.stroke);
-                          }
-                        } else if (lastAction.type == ActionType.erase) {
-                          for (var record in lastAction.strokes) {
-                            if (record.index <= _strokes.length) {
-                              _strokes.insert(record.index, record.stroke);
-                            } else {
-                              _strokes.add(record.stroke);
-                            }
-                          }
-                        }
-                      });
-                    }
-                  : null,
-            ),
-
-            IconButton(
-              icon: const Icon(Icons.redo),
-              onPressed: _undoActions.isNotEmpty
-                  ? () {
-                      setState(() {
-                        final action = _undoActions.removeLast();
-                        _actions.add(action);
-
-                        if (action.type == ActionType.draw) {
-                          for (var record in action.strokes) {
-                            _strokes.add(record.stroke);
-                          }
-                        } else if (action.type == ActionType.erase) {
-                          for (var record in action.strokes) {
-                            _strokes.remove(record.stroke);
-                          }
-                        }
-                      });
-                    }
-                  : null,
-            ),
-
-            SizedBox(
-              height: 50,
-              child: Slider(
-                activeColor: const Color.fromARGB(255, 7, 205, 255),
-                // label: "Brush Size",
-                value: _selectedSize,
-                min: 1.0,
-                max: 100.0,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedSize = value;
-                  });
-                },
-              ),
-            ),
-
-            IconButton(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text("Pick a Color"),
-                    content: SingleChildScrollView(
-                      child: ColorPicker(
-                        pickerColor: _selectedColor,
-                        onColorChanged: (color) {
-                          setState(() {
-                            _isEraserMode = false;
-                            _selectedColor = color;
-                          });
-                        },
-                      ),
-                    ),
-                    actions: [
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: const Text("Done"),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              icon: const Icon(Icons.color_lens),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildColorIcon(Color color) {
-    return IconButton(
-      icon: Icon(Icons.circle, color: color),
-      onPressed: () {
-        setState(() {
-          _isEraserMode = false;
-          _selectedColor = color;
-        });
-      },
-    );
-  }
-
-  Path _drawDot(Offset position) {
-    final dotPath = Path();
-    dotPath.moveTo(position.dx, position.dy);
-    dotPath.lineTo(position.dx, position.dy);
-    // final dotStroke = Stroke(
-    //   color: _selectedColor,
-    //   paint: _currentPaint,
-    //   path: dotPath,
-    //   size: _selectedSize,
-    // );
-    // setState(() {
-    //   // _paths = List.from(_paths)..add(dotPath);
-    //   _strokes = List.from(_strokes)..add(dotStroke);
-    // });
-    return dotPath;
-  }
-
-  void _startDrawing(Offset position) {
-    position = _screenToCanvas(position);
-    if (_isEraserMode) {
-      setState(() {
-        eraserPoint = position;
-      });
-      return;
-    }
-    _updateCurrentPaint();
-    Path dotPath = _drawDot(position);
-    setState(() {
-      eraserPoint = position;
-      _currentPath = dotPath;
-      _currentPath!.moveTo(position.dx, position.dy);
-      _previousPoint = position;
-
-      // _strokes.last = Stroke(
-      //   color: _selectedColor,
-      //   size: _selectedSize,
-      //   paint: _currentPaint,
-      //   path: _currentPath!,
-      // );
-
-      _strokes = List.from(
-        // _strokes
-        _strokes..add(
-          Stroke(
-            color: _selectedColor,
-            size: _selectedSize,
-            paint: _currentPaint,
-            path: _currentPath!,
-          ),
-          // ),
-        ),
-      );
-    });
-  }
-
-  Offset _screenToCanvas(Offset screenPoint) {
-    final matrix = transformationController.value;
-    final inverseMatrix = Matrix4.inverted(matrix);
-    return MatrixUtils.transformPoint(inverseMatrix, screenPoint);
-  }
-
-  Rect _calculateViewport(Size screenSize) {
-    final matrix = transformationController.value;
-    final inverse = Matrix4.inverted(matrix);
-
-    final topLeft = MatrixUtils.transformPoint(inverse, Offset.zero);
-    final bottomRight = MatrixUtils.transformPoint(
-      inverse,
-      Offset(screenSize.width, screenSize.height),
-    );
-
-    return Rect.fromPoints(topLeft, bottomRight);
-  }
-
-  bool _isEraserTouchingPath(
-    Stroke stroke,
-    Offset eraserCenter,
-    double eraserRadius,
+  Widget _buildDocumentWidget(
+    String filePath,
+    String name,
+    String id,
+    double width,
+    double height,
   ) {
-    final metrics = stroke.path.computeMetrics();
-
-    final hitThreshold = eraserRadius + (stroke.paint.strokeWidth / 2);
-
-    double totalPathLength = 0.0;
-
-    for (final metric in metrics) {
-      totalPathLength += metric.length;
-
-      final double step = 5.0;
-      for (double i = 0; i < metric.length; i += step) {
-        final tangent = metric.getTangentForOffset(i);
-        if (tangent == null) continue;
-
-        final pathPoint = tangent.position;
-
-        if ((pathPoint - eraserCenter).distance <= hitThreshold) {
-          return true;
-        }
-      }
-    }
-
-    if (totalPathLength < 5.0) {
-      final bounds = stroke.bounds;
-      if ((bounds.center - eraserCenter).distance <= hitThreshold) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  void _eraseAt(Offset point) {
-    final double eraserRadius = 40.0 / 2;
-
-    final safeEraserRect = Rect.fromCenter(
-      center: point,
-      width: 40.0 + 100,
-      height: 40.0 + 100,
+    return Container(
+      constraints: BoxConstraints(maxWidth: 300),
+      color: Colors.amber,
+      child: Center(
+        child: Text(
+          name,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
     );
+  }
+}
 
-    final strokesToRemove = _strokes.where((stroke) {
-      if (!stroke.bounds.overlaps(safeEraserRect)) return false;
-      return _isEraserTouchingPath(stroke, point, eraserRadius);
-    }).toList();
+class BackgroundPainter extends CustomPainter {
+  final double boundaryMarginWidth;
+  final double boundaryMarginHeight;
+  final Rect viewport;
+  BackgroundPainter(
+    this.boundaryMarginWidth,
+    this.boundaryMarginHeight,
+    this.viewport,
+  );
 
-    if (strokesToRemove.isEmpty) return;
+  final gridPaint = Paint()
+    ..color = const Color.fromARGB(255, 136, 136, 136)
+    ..strokeWidth = 1.0;
 
-    setState(() {
-      for (final stroke in strokesToRemove) {
-        int index = _strokes.indexOf(stroke);
-        _erasedBatch.add(StrokeRecord(stroke, index));
-      }
+  static final double gridSize = 50.0;
 
-      _strokes.removeWhere((s) => strokesToRemove.contains(s));
-    });
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (
+      double x = -boundaryMarginWidth;
+      x < size.width + boundaryMarginWidth;
+      x += gridSize
+    ) {
+      //   if (viewport.overlaps(Rect.fromPoints())) {
+
+      // }
+      canvas.drawLine(
+        Offset(x, -boundaryMarginHeight),
+        Offset(x, size.height + boundaryMarginHeight),
+        gridPaint,
+      );
+    }
+
+    for (
+      double y = -boundaryMarginHeight;
+      y < size.height + boundaryMarginHeight;
+      y += gridSize
+    ) {
+      canvas.drawLine(
+        Offset(-boundaryMarginWidth, y),
+        Offset(size.width + boundaryMarginWidth, y),
+        gridPaint,
+      );
+    }
+
+    // for (
+    //   double y = -boundaryMarginHeight;
+    //   y < size.height + boundaryMarginHeight;
+    //   y += 50
+    // ) {
+    //   canvas.drawLine(
+    //     Offset(-boundaryMarginWidth, y),
+    //     Offset(size.width + boundaryMarginWidth, y),
+    //     gridPaint,
+    //   );
+    // }
+
+    // for (
+    //   double x = -boundaryMarginWidth;
+    //   x < size.width + boundaryMarginWidth;
+    //   x += 50
+    // ) {
+    //   for (
+    //     double y = -boundaryMarginHeight;
+    //     y < size.height + boundaryMarginHeight;
+    //     y += 50
+    //   ) {
+    //     canvas.drawCircle(Offset(x, y), 2, gridPaint);
+    //   }
+    // }
   }
 
-  void _finishErasing() {
-    if (_erasedBatch.isNotEmpty) {
-      _actions.add(
-        CanvasAction(type: ActionType.erase, strokes: List.from(_erasedBatch)),
-      );
-      _erasedBatch.clear();
-      _undoActions.clear();
-    }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return false;
   }
 }
 
 class DrawingPainter extends CustomPainter {
-  final List<Stroke> strokes;
+  final List<CanvasAction> actions;
   final Rect viewport;
   final Offset? eraserPoint;
   final bool isEraserMode;
+  final Offset? shapeStartPoint;
+  final Offset? shapeEndPoint;
+  final ShapeType? shape;
+  final Color currentColor;
+  final List<CanvasElement> elements;
+  final CanvasElement? _selectedShape;
 
   DrawingPainter(
-    this.strokes,
+    this.actions,
     this.viewport,
     this.eraserPoint,
     this.isEraserMode,
+    this.shapeStartPoint,
+    this.shapeEndPoint,
+    this.shape,
+    this.currentColor,
+    this.elements,
+    this._selectedShape,
   );
 
   static final Paint _eraserFillPaint = Paint()
-    ..color = Colors.black.withOpacity(0.1)
+    ..color = Colors.black.withValues(alpha: 0.1)
     ..style = PaintingStyle.fill;
 
-  // 2. Thin border for visibility on dark backgrounds
   static final Paint _eraserBorderPaint = Paint()
-    ..color = Colors.black.withOpacity(0.3)
+    ..color = Colors.black.withValues(alpha: 0.3)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 1.0;
+
+  static final Paint _testPaint = Paint()
+    ..color = Colors.blue
+    ..style = PaintingStyle.fill;
 
   static final eraserSize = 40.0;
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (Stroke stroke in strokes) {
-      if (viewport.overlaps(stroke.bounds)) {
-        canvas.drawPath(stroke.path, stroke.paint);
-        // canvas.drawRect(
-        //   stroke.bounds,
-        //   Paint()
-        //     ..style = PaintingStyle.stroke
-        //     ..color = Colors.red,
-        // );
+    if (shape != null && shapeStartPoint != null && shapeEndPoint != null) {
+      if (shape == ShapeType.rectangle) {
+        canvas.drawRect(
+          Rect.fromPoints(shapeStartPoint!, shapeEndPoint!),
+          _testPaint..color = currentColor,
+        );
+      } else if (shape == ShapeType.circle) {
+        canvas.drawCircle(
+          Offset(
+            (shapeStartPoint!.dx + shapeEndPoint!.dx) / 2,
+            (shapeStartPoint!.dy + shapeEndPoint!.dy) / 2,
+          ),
+          (shapeEndPoint! - shapeStartPoint!).distance / 2,
+          _testPaint..color = currentColor,
+        );
       }
     }
 
@@ -623,5 +468,36 @@ class DrawingPainter extends CustomPainter {
   bool shouldRepaint(covariant DrawingPainter oldDelegate) {
     // return oldDelegate.strokes != strokes;
     return true;
+  }
+}
+
+class ElementsPainter extends CustomPainter {
+  final List<CanvasElement> elements;
+  final Rect viewport;
+
+  ElementsPainter({required this.elements, required this.viewport});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final element in elements) {
+      final HiveStroke stroke = element.stroke!;
+      if (viewport.overlaps(
+        Rect.fromPoints(stroke.bounds.topLeft, stroke.bounds.bottomRight),
+      )) {
+        canvas.drawPath(stroke.path, stroke.paint);
+        // canvas.drawRect(
+        //   stroke.bounds,
+        //   Paint()
+        //     ..style = PaintingStyle.stroke
+        //     ..color = Colors.red,
+        // );
+      }
+      // canvas.drawPath(stroke.path, stroke.paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ElementsPainter oldDelegate) {
+    return oldDelegate.elements != elements;
   }
 }

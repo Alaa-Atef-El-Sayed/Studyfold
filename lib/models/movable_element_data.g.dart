@@ -24,6 +24,8 @@ class MovableElementDataAdapter extends TypeAdapter<MovableElementData> {
       width: fields[4] as double,
       height: fields[5] as double,
       filePath: fields[6] as String,
+      aspectRatio: fields[8] as double?,
+      rotation: fields[9] as double,
       title: fields[7] as String?,
     );
   }
@@ -31,7 +33,7 @@ class MovableElementDataAdapter extends TypeAdapter<MovableElementData> {
   @override
   void write(BinaryWriter writer, MovableElementData obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +49,11 @@ class MovableElementDataAdapter extends TypeAdapter<MovableElementData> {
       ..writeByte(6)
       ..write(obj.filePath)
       ..writeByte(7)
-      ..write(obj.title);
+      ..write(obj.title)
+      ..writeByte(8)
+      ..write(obj.aspectRatio)
+      ..writeByte(9)
+      ..write(obj.rotation);
   }
 
   @override

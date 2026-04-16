@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:studyfold/desktop_view.dart';
 import 'package:studyfold/folder_page.dart';
 import 'package:studyfold/models/folder.dart';
 import 'package:studyfold/services/folder_service.dart';
@@ -25,17 +24,18 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Center(child: Text("Studyfold"))),
-      body: _buildUI(),
-      floatingActionButton: IconButton(
-        onPressed: () {
-          _handleCreateFolder();
-          // widget.folderService.createFolder("test folder");
-        },
-        icon: const Icon(Icons.add, size: 32),
-      ),
-    );
+    return FolderPage(folderService: widget.folderService, folder: Folder(folderId: '0', name: "Studyfold", id: '0', page: 1, pages: 1, positionX: 0, positionY: 0, color: "2"), isMovingMode: (widget.selectedItemIds != null), selectedItemIds: widget.selectedItemIds ?? {},initialFolderId: widget.initialFolderId, onCancel: widget.onCancel,);
+    // return Scaffold(
+    //   appBar: AppBar(title: Center(child: Text("Studyfold"))),
+    //   body: _buildUI(),
+    //   floatingActionButton: IconButton(
+    //     onPressed: () {
+    //       _handleCreateFolder();
+    //       // widget.folderService.createFolder("test folder");
+    //     },
+    //     icon: const Icon(Icons.add, size: 32),
+    //   ),
+    // );
   }
 
   Widget _buildUI() {

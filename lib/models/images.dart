@@ -1,7 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:studyfold/models/file_base.dart';
-import 'package:studyfold/models/movable_element_data.dart';
 part 'images.g.dart';
 
 @HiveType(typeId: 6)
@@ -48,4 +46,12 @@ class Images implements FileBase{
     required this.page,
     this.tags = const [],
   }) : createdAt = DateTime.now().millisecondsSinceEpoch;
+  
+  @override
+  Map<String, dynamic> toJson() {
+    return {};
+  }
+  
+  @override
+  List<String> getAssetPaths() => [];
 }

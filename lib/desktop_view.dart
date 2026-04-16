@@ -18,7 +18,7 @@ class _DesktopViewState extends State<DesktopView> {
   static const double desktopHeight = 2000;
   Offset _startOffset = Offset.zero;
   Offset _startGlobalOffset = Offset.zero;
-  Offset _offset = Offset.zero;
+  final Offset _offset = Offset.zero;
   bool isPanning = false;
 
   @override

@@ -23,14 +23,18 @@ class CanvasAdapter extends TypeAdapter<Canvas> {
       positionX: fields[5] as double,
       positionY: fields[6] as double,
       page: fields[7] as int,
-      strokes: (fields[8] as List).cast<Stroke>(),
+      strokes: (fields[8] as List).cast<HiveStroke>(),
+      elements: (fields[12] as List).cast<CanvasElement>(),
+      images: (fields[9] as List).cast<MovableElementData>(),
+      documents: (fields[10] as List).cast<MovableElementData>(),
+      audioFiles: (fields[11] as List).cast<MovableElementData>(),
     )..updatedAt = fields[4] as int;
   }
 
   @override
   void write(BinaryWriter writer, Canvas obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -48,7 +52,15 @@ class CanvasAdapter extends TypeAdapter<Canvas> {
       ..writeByte(7)
       ..write(obj.page)
       ..writeByte(8)
-      ..write(obj.strokes);
+      ..write(obj.strokes)
+      ..writeByte(9)
+      ..write(obj.images)
+      ..writeByte(10)
+      ..write(obj.documents)
+      ..writeByte(11)
+      ..write(obj.audioFiles)
+      ..writeByte(12)
+      ..write(obj.elements);
   }
 
   @override
