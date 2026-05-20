@@ -1,21 +1,3 @@
-<<<<<<< HEAD
-# studyfold
+A work in progress application im currently working on, this app is designed mainly to make organizing study materials easier, and help you study/memorize materials by creating quick quizzes, annotate notes/pdfs. It could also work as a general drawing application with vector graphics with many features.
 
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-# Studyfold
-A work in progress study suite mobile application
->>>>>>> c8321d8751fd6b765ff032c5cd3cbc43a2460a3c
+Note: Many features are still being developed, and some features will be refined later.
