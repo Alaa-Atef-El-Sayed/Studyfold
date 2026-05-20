@@ -347,7 +347,7 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
                     );
                   }),
 
-                  ..._buildCanvasLayers(viewport),
+                  ..._buildCanvasLayers(viewport, drawingController.elements),
 
                   if (widget.showCropOverlay && widget.initialCropRect != null)
                     AnimatedBuilder(
@@ -443,12 +443,12 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
     });
   }
 
-  List<Widget> _buildCanvasLayers(Rect viewport) {
+  List<Widget> _buildCanvasLayers(Rect viewport, List<CanvasElement> elements) {
     List<Widget> layers = [];
     List<CanvasElement> strokeBuffer = [];
 
-    for (int i = 0; i < drawingController.elements.length; i++) {
-      final element = drawingController.elements[i];
+    for (int i = 0; i < elements.length; i++) {
+      final element = elements[i];
 
       if (element.stroke != null) {
         // It's a stroke! Don't draw yet, just add to buffer.
@@ -484,6 +484,7 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
                 drawingController.images.firstWhere(
                   (image) => image.id == element.movableElement!.id,
                 ),
+                element.children,
               ),
             );
           }
@@ -537,11 +538,15 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
     }
   }
 
-  Widget _buildImage(MovableElement element) {
+  Widget _buildImage(MovableElement element, List<CanvasElement>? children) {
     final isSelected = drawingController.selectedElement == element;
     final showControls = isSelected && !drawingController.isDraggingElement;
     final double degrees = (element.rotation * 180 / Math.pi);
     final double normalizedDegrees = (degrees % 360 + 360) % 360;
+    final Offset center = Offset(
+      element.position.dx + element.width,
+      element.position.dy + element.height,
+    );
 
     return Positioned(
       left: element.position.dx,
@@ -549,122 +554,135 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
       child: Transform.rotate(
         angle: element.rotation,
         alignment: Alignment.center,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: element.width,
-              height: element.height,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected ? Colors.blueAccent : Colors.transparent,
-                  width: 2,
+        child: SizedBox(
+          width: element.width,
+          height: element.height,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: element.width,
+                height: element.height,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: isSelected ? Colors.blueAccent : Colors.transparent,
+                    width: 2,
+                  ),
                 ),
+                child: element.widget,
               ),
-              child: element.widget,
-            ),
-
-            if (isSelected && drawingController.isRotatingMovableElement)
+          
+              ..._buildCanvasLayers(
+                Rect.fromCenter(
+                  center: center,
+                  width: element.width,
+                  height: element.height,
+                ),
+                children!,
+              ),
+          
+              if (isSelected && drawingController.isRotatingMovableElement)
+                Positioned(
+                  top: element.height / 2,
+                  left: element.width / 2,
+                  child: FractionalTranslation(
+                    translation: const Offset(-0.5, -0.5),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(5),
+                        color: const Color.fromARGB(150, 0, 0, 0),
+                      ),
+                      child: Text(
+                        "${normalizedDegrees.toStringAsFixed(1)}°",
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ),
+          
+              // Delete Button
+              // Delete Button
+              // Delete Button
+              // Delete Button
               Positioned(
-                top: element.height / 2,
-                left: element.width / 2,
-                child: FractionalTranslation(
-                  translation: const Offset(-0.5, -0.5),
+                top: -15,
+                right: -15,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: showControls ? 1.0 : 0.0,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                    width: 40,
+                    height: 40,
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(blurRadius: 4, color: Colors.black26),
+                      ],
                     ),
+                    child: const Icon(Icons.close, size: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+          
+              Positioned(
+                bottom: -15,
+                right: -15,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: showControls ? 1.0 : 0.0,
+                  child: Container(
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(5),
-                      color: const Color.fromARGB(150, 0, 0, 0),
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.blueAccent, width: 2),
+                      boxShadow: const [
+                        BoxShadow(blurRadius: 4, color: Colors.black26),
+                      ],
                     ),
-                    child: Text(
-                      "${normalizedDegrees.toStringAsFixed(1)}°",
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    child: const Icon(
+                      Icons.open_in_full,
+                      size: 18,
+                      color: Colors.blueAccent,
                     ),
                   ),
                 ),
               ),
-
-            // Delete Button
-            // Delete Button
-            // Delete Button
-            // Delete Button
-            Positioned(
-              top: -15,
-              right: -15,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: showControls ? 1.0 : 0.0,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(blurRadius: 4, color: Colors.black26),
-                    ],
-                  ),
-                  child: const Icon(Icons.close, size: 18, color: Colors.white),
-                ),
-              ),
-            ),
-
-            Positioned(
-              bottom: -15,
-              right: -15,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: showControls ? 1.0 : 0.0,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.blueAccent, width: 2),
-                    boxShadow: const [
-                      BoxShadow(blurRadius: 4, color: Colors.black26),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.open_in_full,
-                    size: 18,
-                    color: Colors.blueAccent,
+          
+              Positioned(
+                bottom: -15,
+                left: -15,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: showControls ? 1.0 : 0.0,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.blueAccent, width: 2),
+                      boxShadow: const [
+                        BoxShadow(blurRadius: 4, color: Colors.black26),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.rotate_left,
+                      size: 18,
+                      color: Colors.blueAccent,
+                    ),
                   ),
                 ),
               ),
-            ),
-
-            Positioned(
-              bottom: -15,
-              left: -15,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: showControls ? 1.0 : 0.0,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.blueAccent, width: 2),
-                    boxShadow: const [
-                      BoxShadow(blurRadius: 4, color: Colors.black26),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.rotate_left,
-                    size: 18,
-                    color: Colors.blueAccent,
-                  ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1550,9 +1568,9 @@ class ElementsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (final element in elements) {
       final HiveStroke stroke = element.stroke!;
-      if (viewport.overlaps(
-        Rect.fromPoints(stroke.bounds.topLeft, stroke.bounds.bottomRight),
-      )) {
+      // if (viewport.overlaps(
+      //   Rect.fromPoints(stroke.bounds.topLeft, stroke.bounds.bottomRight),
+      // )) {
         canvas.drawPath(stroke.path, stroke.paint);
         // canvas.drawRect(
         //   stroke.bounds,
@@ -1560,7 +1578,7 @@ class ElementsPainter extends CustomPainter {
         //     ..style = PaintingStyle.stroke
         //     ..color = Colors.red,
         // );
-      }
+      // }
       // canvas.drawPath(stroke.path, stroke.paint);
     }
   }
