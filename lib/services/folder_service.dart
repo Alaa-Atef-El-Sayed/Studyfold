@@ -489,6 +489,10 @@ class FolderService {
     canvasBox.put(canvas.id, canvas);
   }
 
+  void updateMovableElement(MovableElementData movableElement){
+    movableElementsBox.put(movableElement.id, movableElement);
+  }
+
   void updateCanvasElements(String canvasId, List<CanvasElement> elements) {
     final Canvas canvas = canvasBox.get(canvasId)!;
     canvas.elements = elements;

@@ -16,6 +16,10 @@ class MovableElement {
   double width;
   double height;
   double rotation;
+  double originalWidth;
+  double originalHeight;
+  Offset cropRectStart;
+  Offset cropRectEnd;
 
   MovableElement({
     required this.id,
@@ -28,7 +32,14 @@ class MovableElement {
     required this.width,
     required this.height,
     this.rotation = 0.0,
-  });
+    double? originalWidth,
+    double? originalHeight,
+    Offset? cropRectStart,
+    Offset? cropRectEnd,
+  }) : cropRectEnd = cropRectEnd ?? Offset(width, height),
+       cropRectStart = cropRectStart ?? Offset.zero,
+       originalWidth = originalWidth ?? width,
+       originalHeight = originalHeight ?? height;
 
   MovableElementData toData() {
     return MovableElementData(
@@ -42,6 +53,10 @@ class MovableElement {
       rotation: rotation,
       filePath: filePath ?? '',
       title: title,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      cropRectStart: cropRectStart,
+      cropRectEnd: cropRectEnd,
     );
   }
 
@@ -57,6 +72,10 @@ class MovableElement {
       rotation: data.rotation,
       filePath: data.filePath,
       title: data.title,
+      originalWidth: data.originalWidth,
+      originalHeight: data.originalHeight,
+      cropRectStart: data.cropRectStart,
+      cropRectEnd: data.cropRectEnd,
     );
   }
 
@@ -84,48 +103,48 @@ class MovableElement {
     return (localPoint - center).distance <= 30.0;
   }
 
-  void open(BuildContext context) async {
-    switch (type) {
-      case ElementType.document:
-        try {
-          final result = await OpenFile.open(filePath, type: 'application/pdf');
+  // void open(BuildContext context) async {
+  //   switch (type) {
+  //     case ElementType.document:
+  //       try {
+  //         final result = await OpenFile.open(filePath, type: 'application/pdf');
 
-          switch (result.type) {
-            case ResultType.done:
-              // Successfully opened
-              break;
-            case ResultType.noAppToOpen:
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Found no apps that can open that file'),
-                ),
-              );
-              break;
-            case ResultType.fileNotFound:
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('PDF file not found')));
-              break;
-            case ResultType.permissionDenied:
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Permission denied to open PDF')),
-              );
-              break;
-            case ResultType.error:
-            default:
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Error: ${result.message}')),
-              );
-          }
-        } catch (e) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed to open PDF: $e')));
-        }
-        break;
-      default:
-    }
-  }
+  //         switch (result.type) {
+  //           case ResultType.done:
+  //             // Successfully opened
+  //             break;
+  //           case ResultType.noAppToOpen:
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(
+  //                 content: Text('Found no apps that can open that file'),
+  //               ),
+  //             );
+  //             break;
+  //           case ResultType.fileNotFound:
+  //             ScaffoldMessenger.of(
+  //               context,
+  //             ).showSnackBar(SnackBar(content: Text('PDF file not found')));
+  //             break;
+  //           case ResultType.permissionDenied:
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(content: Text('Permission denied to open PDF')),
+  //             );
+  //             break;
+  //           case ResultType.error:
+  //           default:
+  //             ScaffoldMessenger.of(context).showSnackBar(
+  //               SnackBar(content: Text('Error: ${result.message}')),
+  //             );
+  //         }
+  //       } catch (e) {
+  //         ScaffoldMessenger.of(
+  //           context,
+  //         ).showSnackBar(SnackBar(content: Text('Failed to open PDF: $e')));
+  //       }
+  //       break;
+  //     default:
+  //   }
+  // }
 
   Offset getCorners() {
     final center = Offset(position.dx + width / 2, position.dy + height / 2);

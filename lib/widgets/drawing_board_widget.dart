@@ -548,6 +548,11 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
       element.position.dy + element.height,
     );
 
+    final cropRect = Rect.fromPoints(
+      element.cropRectStart,
+      element.cropRectEnd,
+    );
+
     return Positioned(
       left: element.position.dx,
       top: element.position.dy,
@@ -560,27 +565,53 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Container(
-                width: element.width,
-                height: element.height,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: isSelected ? Colors.blueAccent : Colors.transparent,
-                    width: 2,
+              Positioned.fill(
+                child: ClipRect(
+                  child: FittedBox(
+                    fit: BoxFit.fill,
+                    child: SizedBox(
+                      width: cropRect.width,
+                      height: cropRect.height,
+                      // 2. We clip the overflowing parts of the original image
+                      child: ClipRect(
+                        child: Stack(
+                          children: [
+                            // 3. Shift the original image back by the crop's left/top offsets
+                            Positioned(
+                              left: -cropRect.left,
+                              top: -cropRect.top,
+                              child: SizedBox(
+                                width: element.originalWidth,
+                                height: element.originalHeight,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    SizedBox(
+                                      width: element.originalWidth,
+                                      height: element.originalHeight,
+                                      child: element.widget,
+                                    ),
+                                    ..._buildCanvasLayers(
+                                      Rect.fromLTWH(
+                                        0,
+                                        0,
+                                        element.originalWidth,
+                                        element.originalHeight,
+                                      ),
+                                      children ?? [],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                child: element.widget,
               ),
-          
-              ..._buildCanvasLayers(
-                Rect.fromCenter(
-                  center: center,
-                  width: element.width,
-                  height: element.height,
-                ),
-                children!,
-              ),
-          
+
               if (isSelected && drawingController.isRotatingMovableElement)
                 Positioned(
                   top: element.height / 2,
@@ -598,12 +629,15 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
                       ),
                       child: Text(
                         "${normalizedDegrees.toStringAsFixed(1)}°",
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
                 ),
-          
+
               // Delete Button
               // Delete Button
               // Delete Button
@@ -625,11 +659,15 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
                         BoxShadow(blurRadius: 4, color: Colors.black26),
                       ],
                     ),
-                    child: const Icon(Icons.close, size: 18, color: Colors.white),
+                    child: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
-          
+
               Positioned(
                 bottom: -15,
                 right: -15,
@@ -655,7 +693,7 @@ class _DrawingBoardWidgetState extends State<DrawingBoardWidget> {
                   ),
                 ),
               ),
-          
+
               Positioned(
                 bottom: -15,
                 left: -15,
@@ -1571,13 +1609,13 @@ class ElementsPainter extends CustomPainter {
       // if (viewport.overlaps(
       //   Rect.fromPoints(stroke.bounds.topLeft, stroke.bounds.bottomRight),
       // )) {
-        canvas.drawPath(stroke.path, stroke.paint);
-        // canvas.drawRect(
-        //   stroke.bounds,
-        //   Paint()
-        //     ..style = PaintingStyle.stroke
-        //     ..color = Colors.red,
-        // );
+      canvas.drawPath(stroke.path, stroke.paint);
+      // canvas.drawRect(
+      //   stroke.bounds,
+      //   Paint()
+      //     ..style = PaintingStyle.stroke
+      //     ..color = Colors.red,
+      // );
       // }
       // canvas.drawPath(stroke.path, stroke.paint);
     }

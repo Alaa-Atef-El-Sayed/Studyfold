@@ -1002,6 +1002,18 @@ class DrawingController extends ChangeNotifier {
     double width,
     double height,
   ) {
+    return Image.file(
+      File(imagePath), 
+      fit: BoxFit.fill, // This is all you need!
+    );
+  }
+
+  Widget _buildImageWidgetee(
+    String imagePath,
+    String id,
+    double width,
+    double height,
+  ) {
     return SizedBox(
       width: double.infinity,
       height: double.infinity,

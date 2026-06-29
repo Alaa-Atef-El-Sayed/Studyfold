@@ -171,6 +171,17 @@ class _CanvasPageState extends State<CanvasPage>
         ),
       ),
     );
+
+    final runtimeImage = _drawingController.images.firstWhere(
+      (img) => img.id == element.movableElement!.id,
+    );
+
+    runtimeImage.cropRectStart = element.movableElement!.cropRectStart;
+    runtimeImage.cropRectEnd = element.movableElement!.cropRectEnd;
+    runtimeImage.originalWidth = element.movableElement!.originalWidth;
+    runtimeImage.originalHeight = element.movableElement!.originalHeight;
+
+    setState(() {});
   }
 
   void _addImage(Rect viewport) async {
@@ -273,7 +284,7 @@ class _CanvasPageState extends State<CanvasPage>
     }
   }
 
-  Widget _buildImageWidget(
+  Widget _buildImageWidgetee(
     String imagePath,
     String id,
     double width,
@@ -283,7 +294,6 @@ class _CanvasPageState extends State<CanvasPage>
       width: double.infinity,
       height: double.infinity,
       child: Stack(
-        alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
           SizedBox(
@@ -292,6 +302,24 @@ class _CanvasPageState extends State<CanvasPage>
             child: Image.file(File(imagePath), fit: BoxFit.fill),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildImageWidget(
+    String imagePath,
+    String id,
+    double width,
+    double height,
+  ) {
+    // Strip away the infinity and the Stack centering.
+    // Force the image to strictly adhere to the exact width and height coordinates!
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.file(
+        File(imagePath),
+        fit: BoxFit.fill, // Guarantees no invisible letterboxing
       ),
     );
   }

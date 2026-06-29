@@ -36,6 +36,18 @@ class MovableElementData implements JsonSerializable {
   @HiveField(9)
   final double rotation;
 
+  @HiveField(10)
+  double originalWidth;
+
+  @HiveField(11)
+  double originalHeight;
+
+  @HiveField(12)
+  Offset cropRectStart;
+
+  @HiveField(13)
+  Offset cropRectEnd;
+
   MovableElementData({
     required this.id,
     required this.type,
@@ -46,6 +58,10 @@ class MovableElementData implements JsonSerializable {
     required this.filePath,
     required this.aspectRatio,
     required this.rotation,
+    required this.originalWidth,
+    required this.originalHeight,
+    required this.cropRectStart,
+    required this.cropRectEnd,
     this.title,
   });
 

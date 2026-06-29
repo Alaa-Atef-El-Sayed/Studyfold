@@ -87,6 +87,25 @@ class _EditImagePageState extends State<EditImagePage>
     }
 
     widget.element.children = _drawingController.elements;
+
+    widget.element.movableElement!.originalWidth = _imageSize!.width;
+    widget.element.movableElement!.originalHeight = _imageSize!.height;
+
+    // We get the ratio between the REAL original size and our screen-fitted _imageSize
+    final double scaleX = widget.element.movableElement!.originalWidth / _imageSize!.width;
+    final double scaleY = widget.element.movableElement!.originalHeight / _imageSize!.height;
+
+    // Scale the screen crop coordinates back up to the original parent canvas space
+    widget.element.movableElement!.cropRectStart = Offset(
+      _cropRect!.left * scaleX,
+      _cropRect!.top * scaleY,
+    );
+
+    widget.element.movableElement!.cropRectEnd = Offset(
+      _cropRect!.right * scaleX,
+      _cropRect!.bottom * scaleY,
+    );
+
     widget.folderService.updateCanvasElementChildren(
       widget.parentId,
       widget.element,
@@ -720,14 +739,33 @@ class _EditImagePageState extends State<EditImagePage>
           _drawingController.config.clampCenterX = _imageSize!.width / 2;
           _drawingController.config.clampCenterY = _imageSize!.height / 2;
 
+          final movable = widget.element.movableElement!;
+          // Calculate scale from original parent coordinates down to our screen coordinates
+          if (_cropRect == null) {
+            final double scaleX = _imageSize!.width / movable.originalWidth;
+            final double scaleY = _imageSize!.height / movable.originalHeight;
+
+            debugPrint(movable.cropRectStart.toString());
+
+            _cropRect = Rect.fromPoints(
+              Offset(
+                movable.cropRectStart.dx * scaleX,
+                movable.cropRectStart.dy * scaleY,
+              ),
+              Offset(
+                movable.cropRectEnd.dx * scaleX,
+                movable.cropRectEnd.dy * scaleY,
+              ),
+            );
+          }
           _constrainedImageSize = true;
         }
-        _cropRect ??= Rect.fromLTWH(
-          0,
-          0,
-          _imageSize!.width,
-          _imageSize!.height,
-        );
+        // _cropRect ??= Rect.fromLTWH(
+        //   0,
+        //   0,
+        //   _imageSize!.width,
+        //   _imageSize!.height,
+        // );
 
         // final double dx = (constraints.biggest.width - _imageSize!.width) / 2;
         // final double dy = (constraints.biggest.height - _imageSize!.height) / 2;
@@ -876,7 +914,7 @@ class _EditImagePageState extends State<EditImagePage>
     }
   }
 
-  Widget _buildImageWidget(
+  Widget _buildImageWidgetee(
     String imagePath,
     String id,
     double width,
@@ -896,6 +934,19 @@ class _EditImagePageState extends State<EditImagePage>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildImageWidget(
+    String imagePath,
+    String id,
+    double width,
+    double height,
+  ) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Image.file(File(imagePath), fit: BoxFit.fill),
     );
   }
 
